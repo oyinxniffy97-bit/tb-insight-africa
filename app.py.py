@@ -682,7 +682,7 @@ with tab2:
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — DATA DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════════
-with tab2:
+with tab3:
     st.markdown('<div class="section-title">Synthetic Patient Cohort Dashboard</div>', unsafe_allow_html=True)
     st.caption("Visualising 500 synthetic patients generated from published biomarker literature. For proof-of-concept demonstration only.")
     
