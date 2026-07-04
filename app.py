@@ -3,6 +3,14 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
+import warnings
+warnings.filterwarnings('ignore')
+
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -343,6 +351,46 @@ def generate_cohort(n=500):
     return pd.DataFrame(records)
 
 
+@st.cache_data
+def train_ml_models(n=1000):
+    np.random.seed(99)
+    records = []
+    groups = (["low"] * int(n*0.40) + ["medium"] * int(n*0.35) + ["high"] * int(n*0.25))
+    np.random.shuffle(groups)
+    for i, group in enumerate(groups[:n]):
+        sex = "M" if i % 2 == 0 else "F"
+        if group == "low":
+            esr = round(np.random.uniform(5, 30), 1)
+            crp = round(np.random.uniform(1, 8), 1)
+            ua  = round(np.random.uniform(3.5, 6.5), 1)
+        elif group == "medium":
+            esr = round(np.random.uniform(32, 72), 1)
+            crp = round(np.random.uniform(10, 38), 1)
+            ua  = round(np.random.uniform(2.0, 3.4), 1)
+        else:
+            esr = round(np.random.uniform(75, 135), 1)
+            crp = round(np.random.uniform(42, 92), 1)
+            ua  = round(np.random.uniform(1.0, 2.4), 1)
+        score, category, _, _, _, _ = classify_risk(esr, crp, ua, sex)
+        records.append({"ESR": esr, "CRP": crp, "Uric_Acid": ua, "Risk_Category": category})
+    df_ml = pd.DataFrame(records)
+    le = LabelEncoder()
+    df_ml["Risk_Encoded"] = le.fit_transform(df_ml["Risk_Category"])
+    X = df_ml[["ESR", "CRP", "Uric_Acid"]]
+    y = df_ml["Risk_Encoded"]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    lr = LogisticRegression(max_iter=1000, random_state=42)
+    lr.fit(X_train, y_train)
+    lr_pred = lr.predict(X_test)
+    lr_acc = accuracy_score(y_test, lr_pred)
+    dt = DecisionTreeClassifier(max_depth=5, random_state=42)
+    dt.fit(X_train, y_train)
+    dt_pred = dt.predict(X_test)
+    dt_acc = accuracy_score(y_test, dt_pred)
+    cm_lr = confusion_matrix(y_test, lr_pred)
+    cm_dt = confusion_matrix(y_test, dt_pred)
+    return lr, dt, le, X_test, y_test, lr_pred, dt_pred, lr_acc, dt_acc, df_ml, cm_lr, cm_dt
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════════
@@ -383,9 +431,10 @@ with col4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # TABS
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔬 Risk Classifier",
-    "📊 Data Dashboard", 
+    "🤖 ML Model",
+    "📊 Data Dashboard",
     "🧬 Biomarker Guide",
     "👥 Our Team",
     "📖 About"
@@ -508,7 +557,130 @@ with tab1:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — DATA DASHBOARD
+# TAB 2 — ML MODEL
+# ══════════════════════════════════════════════════════════════════════════════
+with tab2:
+    st.markdown('<div class="section-title">🤖 Machine Learning Model</div>', unsafe_allow_html=True)
+    st.markdown("Two supervised ML classifiers trained on **1,000 synthetic patients** generated from published biomarker literature.")
+
+    lr, dt, le, X_test, y_test, lr_pred, dt_pred, lr_acc, dt_acc, df_ml, cm_lr, cm_dt = train_ml_models(1000)
+
+    # Model accuracy cards
+    st.markdown("### Model Performance")
+    ma1, ma2, ma3 = st.columns(3)
+    with ma1:
+        st.markdown(f"""<div class="stat-card">
+            <div class="stat-number" style="color:#27AE60">{lr_acc*100:.1f}%</div>
+            <div class="stat-label">Logistic Regression Accuracy</div>
+        </div>""", unsafe_allow_html=True)
+    with ma2:
+        st.markdown(f"""<div class="stat-card">
+            <div class="stat-number" style="color:#1A3A5C">{dt_acc*100:.1f}%</div>
+            <div class="stat-label">Decision Tree Accuracy</div>
+        </div>""", unsafe_allow_html=True)
+    with ma3:
+        st.markdown(f"""<div class="stat-card">
+            <div class="stat-number" style="color:#C0392B">1,000</div>
+            <div class="stat-label">Synthetic Patients Trained On</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Confusion matrices
+    st.markdown("### Confusion Matrices")
+    cm_col1, cm_col2 = st.columns(2)
+    labels = le.classes_
+
+    with cm_col1:
+        fig_cm_lr = px.imshow(
+            cm_lr,
+            labels=dict(x="Predicted", y="Actual", color="Count"),
+            x=labels, y=labels,
+            title="Logistic Regression — Confusion Matrix",
+            color_continuous_scale=["#d5f5e3", "#1A3A5C"],
+            text_auto=True
+        )
+        fig_cm_lr.update_layout(height=350)
+        st.plotly_chart(fig_cm_lr, use_container_width=True)
+
+    with cm_col2:
+        fig_cm_dt = px.imshow(
+            cm_dt,
+            labels=dict(x="Predicted", y="Actual", color="Count"),
+            x=labels, y=labels,
+            title="Decision Tree — Confusion Matrix",
+            color_continuous_scale=["#fadbd8", "#C0392B"],
+            text_auto=True
+        )
+        fig_cm_dt.update_layout(height=350)
+        st.plotly_chart(fig_cm_dt, use_container_width=True)
+
+    # Feature importance
+    st.markdown("### Feature Importance — Decision Tree")
+    features = ["ESR (mm/hr)", "CRP (mg/L)", "Uric Acid (mg/dL)"]
+    importances = dt.feature_importances_
+    fig_fi = px.bar(
+        x=importances,
+        y=features,
+        orientation="h",
+        title="Which Biomarker Drives TB Risk Prediction Most?",
+        labels={"x": "Importance Score", "y": "Biomarker"},
+        color=importances,
+        color_continuous_scale=["#d6e4f0", "#C0392B"]
+    )
+    fig_fi.update_layout(height=300, showlegend=False)
+    st.plotly_chart(fig_fi, use_container_width=True)
+
+    # Live ML prediction
+    st.markdown("### Live ML Prediction")
+    st.markdown("Compare rule-based scoring vs ML model prediction:")
+
+    ml_col1, ml_col2 = st.columns(2)
+    with ml_col1:
+        ml_esr = st.number_input("ESR (mm/hr)", min_value=0.0, max_value=200.0, value=85.0, step=0.5, key="ml_esr")
+        ml_crp = st.number_input("CRP (mg/L)", min_value=0.0, max_value=300.0, value=55.0, step=0.5, key="ml_crp")
+        ml_ua  = st.number_input("Uric Acid (mg/dL)", min_value=0.0, max_value=15.0, value=1.9, step=0.1, key="ml_ua")
+        ml_btn = st.button("🤖 Run ML Prediction", use_container_width=True)
+
+    with ml_col2:
+        if ml_btn:
+            input_data = pd.DataFrame([[ml_esr, ml_crp, ml_ua]], columns=["ESR", "CRP", "Uric_Acid"])
+            lr_result = le.inverse_transform(lr.predict(input_data))[0]
+            dt_result = le.inverse_transform(dt.predict(input_data))[0]
+            rule_score, rule_cat, rule_color, _, _, _ = classify_risk(ml_esr, ml_crp, ml_ua)
+
+            color_map = {"HIGH": "#C0392B", "MEDIUM": "#F39C12", "LOW": "#27AE60"}
+
+            st.markdown(f"""
+            <div style="background:white;padding:1.5rem;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08)">
+                <p style="font-weight:700;color:#1A3A5C;margin:0 0 1rem">Prediction Results:</p>
+                <p>🔬 <strong>Rule-Based Score:</strong> 
+                    <span style="color:{color_map.get(rule_cat,'#000')};font-weight:700">{rule_cat}</span> 
+                    ({rule_score}/6 pts)</p>
+                <p>📈 <strong>Logistic Regression:</strong> 
+                    <span style="color:{color_map.get(lr_result,'#000')};font-weight:700">{lr_result}</span></p>
+                <p>🌳 <strong>Decision Tree:</strong> 
+                    <span style="color:{color_map.get(dt_result,'#000')};font-weight:700">{dt_result}</span></p>
+                <hr>
+                <p style="font-size:0.8rem;color:#666;margin:0">
+                When all three methods agree, confidence is highest.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("👈 Enter biomarker values and click **Run ML Prediction** to compare models.")
+
+    st.markdown("""
+    <div class="disclaimer">
+        ⚠️ <strong>Note:</strong> Models are trained on synthetic data generated from published 
+        clinical literature. Real-world validation requires ethically approved patient data. 
+        Algorithms used: Logistic Regression and Decision Tree (scikit-learn).
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 3 — DATA DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
     st.markdown('<div class="section-title">Synthetic Patient Cohort Dashboard</div>', unsafe_allow_html=True)
@@ -608,9 +780,9 @@ with tab2:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — BIOMARKER GUIDE
+# TAB 4 — BIOMARKER GUIDE
 # ══════════════════════════════════════════════════════════════════════════════
-with tab3:
+with tab4:
     st.markdown('<div class="section-title">Biomarker Science Guide</div>', unsafe_allow_html=True)
     
     col_b1, col_b2, col_b3 = st.columns(3)
@@ -680,9 +852,9 @@ with tab3:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — TEAM
+# TAB 5 — TEAM
 # ══════════════════════════════════════════════════════════════════════════════
-with tab4:
+with tab5:
     st.markdown('<div class="section-title">Our Team</div>', unsafe_allow_html=True)
     
     t1, t2, t3, t4 = st.columns(4)
@@ -711,9 +883,9 @@ with tab4:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — ABOUT
+# TAB 6 — ABOUT
 # ══════════════════════════════════════════════════════════════════════════════
-with tab5:
+with tab6:
     st.markdown('<div class="section-title">About TB Insight Africa</div>', unsafe_allow_html=True)
     
     col_a1, col_a2 = st.columns(2)
