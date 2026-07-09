@@ -472,7 +472,7 @@ with tab1:
         p_crp = st.number_input(
             "CRP — C-Reactive Protein (mg/L)",
             min_value=0.0, max_value=300.0, value=12.0, step=0.5,
-            help="Normal: <5 mg/L"
+            help="Normal: <6mg/L"
         )
         
         p_ua = st.number_input(
@@ -802,7 +802,7 @@ with tab4:
             <p>🟢 Normal Male: &lt;15 mm/hr</p>
             <p>🟢 Normal Female: &lt;20 mm/hr</p>
             <p>🟡 Elevated: 20–50 mm/hr</p>
-            <p>🔴 TB-suggestive: &gt;50 mm/hr</p>
+            <p>🔴 TB-suggestive: &gt;60 mm/hr</p>
             <p>🔴 Active TB: &gt;100 mm/hr</p>
             <hr>
             <small><em>Source: University of Maiduguri Teaching Hospital Study (PMID 20415078)</em></small>
@@ -817,12 +817,10 @@ with tab4:
             <p>CRP is produced by the liver in response to inflammation. It rises sharply in active TB and drops with effective treatment — making it a monitoring marker too.</p>
             <hr>
             <p>🟢 Normal: &lt;5 mg/L</p>
-            <p>🟡 Low-grade: 5–10 mg/L</p>
-            <p>🟡 Moderate: 10–40 mg/L</p>
-            <p>🔴 Active TB: &gt;40 mg/L</p>
-            <p>🔴 Very High: &gt;80 mg/L</p>
+            <p>🟡 Mild-to-Moderate: 6–50 mg/L</p>
+            <p>🔴 Severe: >50 mg/L</p>
             <hr>
-            <small><em>Source: Uganda Diagnostic Study — 78% sensitivity (PMID 33087439)</em></small>
+            <small><em>Source:Sproston & Ashworth, 2018; Uganda Diagnostic Study — 78% sensitivity (PMID 33087439)</em></small>
         </div>
         """, unsafe_allow_html=True)
     
@@ -831,19 +829,19 @@ with tab4:
         <div class="biomarker-card">
             <h3>⚗️ Uric Acid</h3>
             <p><strong>The Nuanced Biomarker</strong></p>
-            <p>TB patients often show LOW uric acid due to oxidative stress and renal involvement — the opposite of what most expect. This makes it a valuable third signal.</p>
+            <p>Active TB causes tissue damage that releases uric acid as a byproduct, acting as a damage signal (DAMP) that activates inflammatory pathways. Elevated uric acid, not low, is the expected pattern in untreated active TB.</p>
             <hr>
-            <p>🟢 Normal Male: 3.5–7.2 mg/dL</p>
-            <p>🟢 Normal Female: 2.6–6.0 mg/dL</p>
-            <p>🟡 Borderline Low: 2.5–3.4 mg/dL</p>
-            <p>🔴 Hypouricemia: &lt;2.5 mg/dL</p>
+            <p>🟢 Normal Male: 3.5–7.0 mg/dL</p>
+            <p>🟢 Normal Female: 2.5–6.0 mg/dL</p>
+            <p>🟡 Borderline Elevated: 6.0–7.0 mg/dL (M) / 5.1–6.0 mg/dL (F)</p>
+            <p>🔴 Hyperuricemia: &gt;7.0 mg/dL (M) / &gt;6.0 mg/dL (F)</p>
             <hr>
-            <small><em>Source: Cameroon Study — 58.3% hyperuricemia in TB patients (IJMY 2018)</em></small>
+            <small><em>Source: Cameroon Study — 58.3% hyperuricemia in TB patients (IJMY 2018); Sautin &amp; Johnson, 2008</em></small>
         </div>
         """, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("""
+    st.markdown("""<p>🟡 Borderline Elevate
     <div class="recommendation-box">
         <strong>🧠 Why Combine All Three?</strong><br><br>
         ESR alone is sensitive but not TB-specific — it rises in many conditions. 
