@@ -9,8 +9,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 import warnings
+from who_burden_tab import render_who_burden_tab
 warnings.filterwarnings('ignore')
-
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -226,46 +226,50 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ─── RISK CLASSIFIER FUNCTION ─────────────────────────────────────────────────
-def classify_risk(esr, crp, uric_acid, sex="M"):
+def classify_risk(esr, crp, uric_acid, sex="M", age=35):
     score = 0
     breakdown = {}
 
-    # ESR scoring
-    if esr > 50:
-        score += 2
-        breakdown['ESR'] = ('High', 2, f'{esr} mm/hr — significantly elevated')
-    elif esr > 20:
-        score += 1
-        breakdown['ESR'] = ('Moderate', 1, f'{esr} mm/hr — mildly elevated')
+    # ESR scoring — age/sex-specific normal ranges (Sox & Liang, 1986)
+    if sex == "M":
+        normal_esr = 15 if age <= 50 else 20
     else:
-        breakdown['ESR'] = ('Normal', 0, f'{esr} mm/hr — within normal range')
+        normal_esr = 20 if age <= 50 else 30
 
-    # CRP scoring
-    if crp > 40:
+    if esr > 60:
         score += 2
-        breakdown['CRP'] = ('High', 2, f'{crp} mg/L — high-level inflammation')
-    elif crp > 10:
+        breakdown['ESR'] = ('High', 2, f'{esr:.1f} mm/hr — markedly elevated (>60 mm/hr)')
+    elif esr > normal_esr:
         score += 1
-        breakdown['CRP'] = ('Moderate', 1, f'{crp} mg/L — moderate inflammation')
+        breakdown['ESR'] = ('Moderate', 1, f'{esr} mm/hr — above normal for age/sex ({normal_esr} mm/hr)')
     else:
-        breakdown['CRP'] = ('Normal', 0, f'{crp} mg/L — within normal range')
+        breakdown['ESR'] = ('Normal', 0, f'{esr} mm/hr — within normal range (<{normal_esr} mm/hr)')
 
-    # Uric Acid scoring
-    normal_ua = 3.5 if sex == "M" else 2.6
-    if uric_acid < 2.5:
+    # CRP scoring (Sproston & Ashworth, 2018)
+    if crp > 50:
         score += 2
-        breakdown['Uric Acid'] = ('Low', 2, f'{uric_acid} mg/dL — hypouricemia detected')
-    elif uric_acid < normal_ua:
+        breakdown['CRP'] = ('High', 2, f'{crp:.1f} mg/L — severe inflammation (>50 mg/L)')
         score += 1
-        breakdown['Uric Acid'] = ('Borderline', 1, f'{uric_acid} mg/dL — borderline low')
+        breakdown['CRP'] = ('Moderate', 1, f'{crp} mg/L — mild-to-moderate inflammation')
+    else:
+        breakdown['CRP'] = ('Normal', 0, f'{crp} mg/L — within normal range (<6 mg/L)')
+
+    # Uric Acid scoring — ELEVATED, not low, per Shin et al. 2023 / Sautin & Johnson 2008
+    ua_threshold = 7.0 if sex == "M" else 6.0
+    ua_borderline = ua_threshold * 0.85
+
+    if uric_acid > ua_threshold:
+        score += 2
+        breakdown['Uric Acid'] = ('High', 2, f'{uric_acid:.1f} mg/dL — hyperuricemia (>{ua_threshold} mg/dL)')
+    elif uric_acid > ua_borderline:
+        score += 1
+        breakdown['Uric Acid'] = ('Borderline', 1, f'{uric_acid} mg/dL — borderline elevated')
     else:
         breakdown['Uric Acid'] = ('Normal', 0, f'{uric_acid} mg/dL — within normal range')
 
     # Risk category
     if score >= 4:
-        category = "HIGH"
-        color = "high"
+        category, color = "HIGH", "high"
         action = "⚠️ Urgent clinical evaluation required. Refer for sputum smear microscopy and GeneXpert testing immediately."
         next_steps = [
             "Refer immediately for sputum smear microscopy",
@@ -275,8 +279,7 @@ def classify_risk(esr, crp, uric_acid, sex="M"):
             "Notify clinician urgently"
         ]
     elif score >= 2:
-        category = "MEDIUM"
-        color = "medium"
+        category, color = "MEDIUM", "medium"
         action = "🔍 Clinical follow-up required. Repeat biomarkers in 2 weeks and monitor closely."
         next_steps = [
             "Schedule follow-up appointment within 2 weeks",
@@ -286,8 +289,7 @@ def classify_risk(esr, crp, uric_acid, sex="M"):
             "Monitor weight and temperature"
         ]
     else:
-        category = "LOW"
-        color = "low"
+        category, color = "LOW", "low"
         action = "✅ Low TB risk based on current biomarkers. Routine monitoring advised."
         next_steps = [
             "Routine monitoring — no urgent action needed",
@@ -298,17 +300,18 @@ def classify_risk(esr, crp, uric_acid, sex="M"):
 
     return score, category, color, action, next_steps, breakdown
 
-
 # ─── GENERATE SYNTHETIC COHORT ────────────────────────────────────────────────
+@st.cache_data
+# ─── GENERATE SYNTHETIC COHORT (CORRECTED UA DIRECTION) ──────────────────────
 @st.cache_data
 def generate_cohort(n=500):
     np.random.seed(42)
     records = []
-    
+
     states = ["Lagos","Kano","Abuja","Rivers","Oyo","Enugu",
               "Kaduna","Delta","Borno","Anambra","Ekiti","Osun",
               "Sokoto","Bauchi","Plateau","Imo","Abia","Cross River"]
-    
+
     groups = (
         [("low", 0.4)] * int(n * 0.4) +
         [("medium", 0.35)] * int(n * 0.35) +
@@ -324,17 +327,17 @@ def generate_cohort(n=500):
         if group == "low":
             esr = round(np.random.uniform(5, 30), 1)
             crp = round(np.random.uniform(1, 8), 1)
-            ua  = round(np.random.uniform(3.5, 6.5), 1)
+            ua  = round(np.random.uniform(3.5, 6.0), 1)
         elif group == "medium":
             esr = round(np.random.uniform(32, 72), 1)
             crp = round(np.random.uniform(10, 38), 1)
-            ua  = round(np.random.uniform(2.0, 3.4), 1)
+            ua  = round(np.random.uniform(6.0, 7.5), 1)
         else:
             esr = round(np.random.uniform(75, 135), 1)
             crp = round(np.random.uniform(42, 92), 1)
-            ua  = round(np.random.uniform(1.0, 2.4), 1)
+            ua  = round(np.random.uniform(7.5, 10.5), 1)
 
-        score, category, _, _, _, _ = classify_risk(esr, crp, ua, sex)
+        score, category, _, _, _, _ = classify_risk(esr, crp, ua, sex, age)
         records.append({
             "Patient ID": f"P{i+1:04d}",
             "Age": age,
@@ -359,19 +362,20 @@ def train_ml_models(n=1000):
     np.random.shuffle(groups)
     for i, group in enumerate(groups[:n]):
         sex = "M" if i % 2 == 0 else "F"
+        age = np.random.randint(18, 66)
         if group == "low":
             esr = round(np.random.uniform(5, 30), 1)
             crp = round(np.random.uniform(1, 8), 1)
-            ua  = round(np.random.uniform(3.5, 6.5), 1)
+            ua  = round(np.random.uniform(3.5, 6.0), 1)
         elif group == "medium":
             esr = round(np.random.uniform(32, 72), 1)
             crp = round(np.random.uniform(10, 38), 1)
-            ua  = round(np.random.uniform(2.0, 3.4), 1)
+            ua  = round(np.random.uniform(6.0, 7.5), 1)
         else:
             esr = round(np.random.uniform(75, 135), 1)
             crp = round(np.random.uniform(42, 92), 1)
-            ua  = round(np.random.uniform(1.0, 2.4), 1)
-        score, category, _, _, _, _ = classify_risk(esr, crp, ua, sex)
+            ua  = round(np.random.uniform(7.5, 10.5), 1)
+        score, category, _, _, _, _ = classify_risk(esr, crp, ua, sex, age)
         records.append({"ESR": esr, "CRP": crp, "Uric_Acid": ua, "Risk_Category": category})
     df_ml = pd.DataFrame(records)
     le = LabelEncoder()
@@ -409,18 +413,18 @@ st.markdown("""
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.markdown("""<div class="stat-card">
-        <div class="stat-number">10.7M</div>
-        <div class="stat-label">Global TB Cases (2024)</div>
+        <div class="stat-number">10.6M</div>
+        <div class="stat-label">Global TB Cases (2022)</div>
     </div>""", unsafe_allow_html=True)
 with col2:
     st.markdown("""<div class="stat-card">
-        <div class="stat-number">25%</div>
+        <div class="stat-number">23.4%</div>
         <div class="stat-label">Africa's Share of Global Burden</div>
     </div>""", unsafe_allow_html=True)
 with col3:
     st.markdown("""<div class="stat-card">
-        <div class="stat-number">510K</div>
-        <div class="stat-label">Nigeria TB Cases Annually</div>
+        <div class="stat-number">479K</div>
+        <div class="stat-label">Nigeria TB Cases (2022)</div>
     </div>""", unsafe_allow_html=True)
 with col4:
     st.markdown("""<div class="stat-card">
@@ -431,15 +435,15 @@ with col4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # TABS
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🔬 Risk Classifier",
     "🤖 ML Model",
     "📊 Data Dashboard",
     "🧬 Biomarker Guide",
     "👥 Our Team",
-    "📖 About"
+    "📖 About",
+    "🌍 Regional Context"
 ])
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — RISK CLASSIFIER
@@ -471,10 +475,10 @@ with tab1:
         )
         
         p_ua = st.number_input(
-            "Uric Acid (mg/dL)",
-            min_value=0.0, max_value=15.0, value=3.8, step=0.1,
-            help="Normal: Male 3.5–7.2, Female 2.6–6.0 mg/dL"
-        )
+    "Uric Acid (mg/dL)",
+    min_value=0.0, max_value=15.0, value=3.8, step=0.1,
+    help="Normal: Male 3.5-7.0, Female 2.5-6.0 mg/dL"
+)
         
         classify_btn = st.button("🔍 Classify TB Risk", use_container_width=True)
     
@@ -482,7 +486,7 @@ with tab1:
         if classify_btn:
             sex_code = "M" if p_sex == "Male" else "F"
             score, category, color, action, next_steps, breakdown = classify_risk(
-                p_esr, p_crp, p_ua, sex_code
+                p_esr, p_crp, p_ua, sex_code, p_age
             )
             
             # Risk card
@@ -549,10 +553,10 @@ with tab1:
             # Reference ranges
             st.markdown("#### Quick Reference — Normal Ranges")
             ref_data = {
-                "Biomarker": ["ESR (Male)", "ESR (Female)", "CRP", "Uric Acid (Male)", "Uric Acid (Female)"],
-                "Normal Range": ["< 15 mm/hr", "< 20 mm/hr", "< 5 mg/L", "3.5–7.2 mg/dL", "2.6–6.0 mg/dL"],
-                "TB-Suggestive": ["> 50 mm/hr", "> 50 mm/hr", "> 40 mg/L", "< 2.5 mg/dL", "< 2.5 mg/dL"]
-            }
+    "Biomarker": ["ESR (Male)", "ESR (Female)", "CRP", "Uric Acid (Male)", "Uric Acid (Female)"],
+    "Normal Range": ["< 15 mm/hr", "< 20 mm/hr", "< 6 mg/L", "3.5–7.0 mg/dL", "2.5–6.0 mg/dL"],
+    "TB-Suggestive": ["> 60 mm/hr", "> 60 mm/hr", "> 50 mg/L", "> 7.0 mg/dL", "> 6.0 mg/dL"]
+}
             st.dataframe(pd.DataFrame(ref_data), use_container_width=True, hide_index=True)
 
 
@@ -949,3 +953,5 @@ st.markdown("""
     </p>
 </div>
 """, unsafe_allow_html=True)
+with tab7:
+    render_who_burden_tab()
