@@ -249,10 +249,11 @@ def classify_risk(esr, crp, uric_acid, sex="M", age=35):
     if crp > 50:
         score += 2
         breakdown['CRP'] = ('High', 2, f'{crp:.1f} mg/L — severe inflammation (>50 mg/L)')
+    elif crp > 6:
         score += 1
-        breakdown['CRP'] = ('Moderate', 1, f'{crp} mg/L — mild-to-moderate inflammation')
+        breakdown['CRP'] = ('Moderate', 1, f'{crp:.1f} mg/L — mild-to-moderate inflammation')
     else:
-        breakdown['CRP'] = ('Normal', 0, f'{crp} mg/L — within normal range (<6 mg/L)')
+        breakdown['CRP'] = ('Normal', 0, f'{crp:.1f} mg/L — within normal range (<6 mg/L)')
 
     # Uric Acid scoring — ELEVATED, not low, per Shin et al. 2023 / Sautin & Johnson 2008
     ua_threshold = 7.0 if sex == "M" else 6.0
