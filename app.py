@@ -301,6 +301,62 @@ def classify_risk(esr, crp, uric_acid, sex="M", age=35):
 
     return score, category, color, action, next_steps, breakdown
 
+
+# ─── SEX/AGE-AWARE SYNTHETIC BIOMARKER SAMPLING ──────────────────────────────
+# Older version generated biomarkers from fixed ranges per risk group, but ESR and
+# Uric Acid thresholds are sex-specific in classify_risk() — a fixed range could
+# straddle the female threshold while sitting safely under the male one (or vice versa),
+# silently pushing patients into the wrong risk category and weakening MEDIUM-tier
+# ML performance. This version samples each biomarker to hit an exact scoring tier
+# (0/1/2 points) computed from the SAME sex/age-specific thresholds classify_risk() uses,
+# so the intended risk group always matches the actual computed category.
+
+# Tier combinations (ESR tier, CRP tier, UA tier) that sum to each target risk band
+LOW_COMBOS    = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]                                   # score 0-1
+MEDIUM_COMBOS = [(1, 1, 0), (1, 0, 1), (0, 1, 1), (1, 1, 1), (2, 0, 0), (0, 2, 0), (0, 0, 2)]    # score 2-3
+HIGH_COMBOS   = [(2, 2, 0), (2, 0, 2), (0, 2, 2), (2, 1, 1), (1, 2, 1),
+                 (1, 1, 2), (2, 2, 1), (2, 1, 2), (1, 2, 2), (2, 2, 2)]                          # score 4-6
+
+def _sample_marker(tier, kind, normal_esr=None, ua_threshold=None, ua_borderline=None):
+    """Sample a biomarker value guaranteed to land in the given scoring tier (0/1/2 points)."""
+    if kind == "esr":
+        if tier == 0:
+            return round(np.random.uniform(5, max(6, normal_esr - 1)), 1)
+        elif tier == 1:
+            return round(np.random.uniform(normal_esr + 1, 60), 1)
+        else:
+            return round(np.random.uniform(61, 135), 1)
+    elif kind == "crp":
+        if tier == 0:
+            return round(np.random.uniform(1, 6), 1)
+        elif tier == 1:
+            return round(np.random.uniform(6.5, 50), 1)
+        else:
+            return round(np.random.uniform(51, 95), 1)
+    else:  # uric acid
+        lo_bound = 2.0
+        if tier == 0:
+            return round(np.random.uniform(lo_bound, max(lo_bound + 0.5, ua_borderline - 0.1)), 1)
+        elif tier == 1:
+            return round(np.random.uniform(ua_borderline + 0.1, ua_threshold - 0.1), 1)
+        else:
+            return round(np.random.uniform(ua_threshold + 0.1, ua_threshold + 3.5), 1)
+
+def sample_patient_biomarkers(group, sex, age):
+    """Generate one synthetic patient's ESR/CRP/Uric Acid that reliably lands in `group`
+    (low/medium/high) once run through classify_risk(), for the given sex and age."""
+    normal_esr = (15 if age <= 50 else 20) if sex == "M" else (20 if age <= 50 else 30)
+    ua_threshold = 7.0 if sex == "M" else 6.0
+    ua_borderline = ua_threshold * 0.85
+
+    combo_pool = {"low": LOW_COMBOS, "medium": MEDIUM_COMBOS, "high": HIGH_COMBOS}[group]
+    esr_tier, crp_tier, ua_tier = combo_pool[np.random.randint(len(combo_pool))]
+
+    esr = _sample_marker(esr_tier, "esr", normal_esr=normal_esr)
+    crp = _sample_marker(crp_tier, "crp")
+    ua = _sample_marker(ua_tier, "ua", ua_threshold=ua_threshold, ua_borderline=ua_borderline)
+    return esr, crp, ua
+
 # ─── GENERATE SYNTHETIC COHORT ────────────────────────────────────────────────
 @st.cache_data
 # ─── GENERATE SYNTHETIC COHORT (CORRECTED UA DIRECTION) ──────────────────────
@@ -325,18 +381,7 @@ def generate_cohort(n=500):
         age = np.random.randint(18, 66)
         state = np.random.choice(states)
 
-        if group == "low":
-            esr = round(np.random.uniform(5, 30), 1)
-            crp = round(np.random.uniform(1, 8), 1)
-            ua  = round(np.random.uniform(3.5, 6.0), 1)
-        elif group == "medium":
-            esr = round(np.random.uniform(32, 72), 1)
-            crp = round(np.random.uniform(10, 38), 1)
-            ua  = round(np.random.uniform(6.0, 7.5), 1)
-        else:
-            esr = round(np.random.uniform(75, 135), 1)
-            crp = round(np.random.uniform(42, 92), 1)
-            ua  = round(np.random.uniform(7.5, 10.5), 1)
+        esr, crp, ua = sample_patient_biomarkers(group, sex, age)
 
         score, category, _, _, _, _ = classify_risk(esr, crp, ua, sex, age)
         records.append({
@@ -364,18 +409,7 @@ def train_ml_models(n=1000):
     for i, group in enumerate(groups[:n]):
         sex = "M" if i % 2 == 0 else "F"
         age = np.random.randint(18, 66)
-        if group == "low":
-            esr = round(np.random.uniform(5, 30), 1)
-            crp = round(np.random.uniform(1, 8), 1)
-            ua  = round(np.random.uniform(3.5, 6.0), 1)
-        elif group == "medium":
-            esr = round(np.random.uniform(32, 72), 1)
-            crp = round(np.random.uniform(10, 38), 1)
-            ua  = round(np.random.uniform(6.0, 7.5), 1)
-        else:
-            esr = round(np.random.uniform(75, 135), 1)
-            crp = round(np.random.uniform(42, 92), 1)
-            ua  = round(np.random.uniform(7.5, 10.5), 1)
+        esr, crp, ua = sample_patient_biomarkers(group, sex, age)
         score, category, _, _, _, _ = classify_risk(esr, crp, ua, sex, age)
         records.append({"ESR": esr, "CRP": crp, "Uric_Acid": ua, "Risk_Category": category})
     df_ml = pd.DataFrame(records)
@@ -383,7 +417,7 @@ def train_ml_models(n=1000):
     df_ml["Risk_Encoded"] = le.fit_transform(df_ml["Risk_Category"])
     X = df_ml[["ESR", "CRP", "Uric_Acid"]]
     y = df_ml["Risk_Encoded"]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     lr = LogisticRegression(max_iter=1000, random_state=42)
     lr.fit(X_train, y_train)
     lr_pred = lr.predict(X_test)
@@ -623,6 +657,39 @@ with tab2:
         </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # Precision / Recall / F1 per class — accuracy alone can hide weak spots in a health-screening
+    # tool, especially for an imbalanced middle class, so this is shown explicitly rather than
+    # only reporting a single headline accuracy number.
+    st.markdown("### Precision & Recall by Risk Class")
+    st.caption(
+        "Accuracy alone can look good while quietly failing one risk tier. Recall (sensitivity) "
+        "matters most for HIGH risk — it tells us how many true high-risk patients the model actually catches."
+    )
+
+    from sklearn.metrics import precision_recall_fscore_support
+    prec_lr, rec_lr, f1_lr, support_lr = precision_recall_fscore_support(y_test, lr_pred, labels=range(len(le.classes_)))
+    prec_dt, rec_dt, f1_dt, support_dt = precision_recall_fscore_support(y_test, dt_pred, labels=range(len(le.classes_)))
+
+    metrics_df = pd.DataFrame({
+        "Risk Class": le.classes_,
+        "LR Precision": [f"{p:.1%}" for p in prec_lr],
+        "LR Recall (Sensitivity)": [f"{r:.1%}" for r in rec_lr],
+        "DT Precision": [f"{p:.1%}" for p in prec_dt],
+        "DT Recall (Sensitivity)": [f"{r:.1%}" for r in rec_dt],
+        "Test Set Size": support_lr,
+    })
+    st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+
+    st.markdown("""
+    <div class="disclaimer">
+        ⚠️ <strong>Note:</strong> Synthetic patients are generated with sex/age-specific biomarker
+        thresholds matching the Risk Classifier's own scoring logic, so all three risk tiers
+        (LOW/MEDIUM/HIGH) are reliably represented and learnable. Even so, this is
+        <strong>synthetic data</strong>, not real patient records — genuine clinical validation
+        requires ethically approved data such as the ISTH cohort currently in progress.
+    </div>
+    """, unsafe_allow_html=True)
 
     # Confusion matrices
     st.markdown("### Confusion Matrices")
