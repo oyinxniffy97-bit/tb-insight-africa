@@ -452,6 +452,20 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 with tab1:
     st.markdown('<div class="section-title">TB Risk Classifier</div>', unsafe_allow_html=True)
     st.markdown("Enter a patient's routine laboratory values below to generate an instant TB risk assessment.")
+
+    with st.expander("ℹ️ What is this, in plain terms?"):
+        st.markdown("""
+        This is a **scorecard**, not artificial intelligence. It works the same way a clinician
+        already scores risk manually — each biomarker result (ESR, CRP, uric acid, etc.) is checked
+        against known WHO/clinical reference ranges, and points are added up to give a **Risk Score out of 6**.
+
+        - No "learning" happens here — the rules are fixed and based on published thresholds.
+        - You can trace exactly *why* a patient got a given score.
+        - Think of it like a checklist a doctor could do on paper — this just does it instantly.
+
+        👉 For the version that uses **Machine Learning** (a model trained on many past patient examples),
+        see the **🤖 ML Model** tab.
+        """)
     
     col_form, col_result = st.columns([1, 1.2], gap="large")
     
@@ -567,6 +581,25 @@ with tab1:
 with tab2:
     st.markdown('<div class="section-title">🤖 Machine Learning Model</div>', unsafe_allow_html=True)
     st.markdown("Two supervised ML classifiers trained on **1,000 synthetic patients** generated from published biomarker literature.")
+
+    with st.expander("ℹ️ How is this different from the Risk Classifier tab?"):
+        st.markdown("""
+        The **🔬 Risk Classifier** tab uses fixed, human-written rules (like a scoring checklist).
+        This tab is different: it's a model that **learned patterns on its own** from 1,000 example
+        patient cases, instead of following rules a person wrote down.
+
+        - It was shown many example patients (with known outcomes) and learned which
+          *combinations* of ESR, CRP, and uric acid tend to go with higher TB risk —
+          including subtle patterns a fixed checklist might miss.
+        - It's less "explainable" step-by-step than the scorecard, but often more accurate
+          because it can weigh multiple biomarkers together, not just one at a time.
+        - The data used here is **synthetic** (computer-generated from published literature),
+          not real patient records — so treat this tab as a research/demo preview of what
+          ML could offer once trained on real clinical data.
+
+        In short: **Risk Classifier = a checklist. ML Model = a pattern-detector.**
+        Both are shown side-by-side so you can compare how they score the same patient.
+        """)
 
     lr, dt, le, X_test, y_test, lr_pred, dt_pred, lr_acc, dt_acc, df_ml, cm_lr, cm_dt = train_ml_models(1000)
 
@@ -863,14 +896,14 @@ with tab5:
     t1, t2, t3, t4 = st.columns(4)
     
     team = [
-        ("👩‍🔬", "Abosede", "Founder & Health Data Scientist",
-         "Medical Laboratory Scientist (Chemical Pathology) | Health Science, University of the People | Data Science & ML"),
-        ("👨‍🏫", "PhD Supervisor", "Scientific Advisor & Research Lead",
-         "PhD-level academic supervision providing scientific credibility and research methodology oversight"),
-        ("👩‍⚕️", "Co-Chemical Pathologist", "Clinical Research Partner",
-         "Chemical Pathology specialist with deep expertise in biomarker research and clinical interpretation"),
-        ("👩‍💻", "Nurse & Health Analyst", "Clinical Workflow & Dashboard Analyst",
-         "Registered Nurse with health data analytics expertise — bridging frontline clinical insight and data")
+        ("👨‍🏫", "Dr. Dic-Ijiewere Ebenezer", "Academic Authority",
+         "Head of Department, Chemical Pathology, Ambrose Alli University — published researcher in biomarker and oxidative stress science, providing academic credibility and methodology oversight"),
+        ("👩‍🔬", "Adese Abosede Oluwanifemi", "Founder",
+         "Medical Laboratory Science Student | Data Scientist | Machine Learning"),
+        ("👨‍💻", "Ibhate Destiny", "Co-Founder",
+         "Medical Laboratory Science Student | Machine Learning | AI Engineer"),
+        ("👩‍⚕️", "Aishat Afunlehin", "Microbiologist & Researcher",
+         "Microbiologist with research expertise supporting biomarker validation and clinical interpretation")
     ]
     
     for col, (icon, name, role, desc) in zip([t1, t2, t3, t4], team):
@@ -953,4 +986,5 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 with tab7:
+    render_who_burden_tab()
     render_who_burden_tab()
