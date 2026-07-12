@@ -987,4 +987,3 @@ st.markdown("""
 """, unsafe_allow_html=True)
 with tab7:
     render_who_burden_tab()
-    render_who_burden_tab()
